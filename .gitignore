@@ -1,0 +1,41 @@
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+venv/
+.venv/
+node_modules/
+dist/
+build/
+
+.DS_Store
+
+storage_bucket/
+backend/storage_bucket/
+
+*.log
+
+backend_before_recruiter_backend/
+backend_backup_2026-08-19/
+
+artifacts/
+
+# Local/generated database and backup files
+*.rdb
+backend/backups/
+
+# Internal frontend API dumps
+frontend/frontend-api.txt
+frontend/frontend-api-small.txt
+
+# Generated Python package metadata
+*.egg-info/
