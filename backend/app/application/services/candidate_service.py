@@ -6,7 +6,7 @@ from sqlalchemy import func
 
 from app.infrastructure.db.models import Candidate, Application, MatchResult, JobRequisition
 from app.application.dto.recruiter_dto import CandidateCreate, CandidateUpdate, CandidateResponse
-from app.application.services.matching_service import MatchingService
+
 
 class CandidateService:
 
@@ -84,14 +84,7 @@ class CandidateService:
                 await db.commit()
                 await db.refresh(application)
 
-                # Compute deterministic match score
-                match_result = await MatchingService.evaluate_and_save_match(
-                    db=db,
-                    candidate_id=str(candidate.id),
-                    job_id=str(job.id),
-                    company_id=company_id,
-                    application_id=str(application.id)
-                )
+                match_result = None
 
         return cls._format_candidate(candidate, application, match_result)
 

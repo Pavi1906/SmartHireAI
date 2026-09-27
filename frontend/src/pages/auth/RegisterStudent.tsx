@@ -4,8 +4,9 @@ import { useDispatch } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, User, Mail, Lock, GraduationCap, Github, Linkedin, MapPin, Phone } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { loginSuccess, loginStart, loginFailure } from '../../store/slices/authSlice';
-import { getStoredUsers, saveUsers, Student } from '../../services/authDemo';
+import { loginSuccess, loginStart, loginFailure, buildSessionUserFromToken } from '../../store/slices/authSlice';
+import { registerStudent } from '../../services/authDemo';
+
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -20,6 +21,7 @@ const registerSchema = z.object({
   degree: z.string().min(2, "Degree is required"),
   graduationYear: z.string().min(4, "Graduation year required"),
   location: z.string().min(2, "Location is required"),
+  branch: z.string().min(2, "Branch is required"),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -36,49 +38,35 @@ export function RegisterStudent() {
     resolver: zodResolver(registerSchema)
   });
 
-  const onSubmit = (data: RegisterFormValues) => {
+  const onSubmit = async (data: RegisterFormValues) => {
     setStep(1);
     dispatch(loginStart());
 
-    setTimeout(() => {
-      const users = getStoredUsers();
-      if (users.find(u => u.email === data.email)) {
-        dispatch(loginFailure("Email already registered"));
-        setStep(0);
-        return;
-      }
-
-      const newStudent: Student = {
-        id: 'user_' + Math.random().toString(36).substr(2, 9),
-        name: data.name,
+    try {
+      // Map form data to backend payload
+      const payload = {
+        full_name: data.name,
         email: data.email,
-        role: 'STUDENT',
-        phone: data.phone,
+        password: data.password,
+        phone_number: data.phone,
+        branch: data.branch,
         college: data.college,
         degree: data.degree,
-        graduationYear: data.graduationYear,
+        graduation_year: Number(data.graduationYear),
         location: data.location,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=random`
       };
-
-      // Store in users
-      users.push(newStudent);
-      saveUsers(users);
-
-      // We should really save the password securely, but since this is a frontend demo we can store it in the users array or a separate auth store.
-      // Let's store password in a separate hidden property for demo purposes
-      (newStudent as any).password = data.password;
-      saveUsers(users);
-      delete (newStudent as any).password; // don't put it in redux
-
-      setStep(2);
-      
-      setTimeout(() => {
-        dispatch(loginSuccess(newStudent));
-        navigate('/dashboard');
-      }, 800);
-    }, 800);
+      const token = await registerStudent(payload);
+      const sessionUser = buildSessionUserFromToken(token, data.email, 'STUDENT');
+      if (!sessionUser) throw new Error('Failed to build session user from token');
+      dispatch(loginSuccess(sessionUser as any));
+      navigate('/dashboard');
+    } catch (err: any) {
+      const message = err?.response?.data?.detail || err?.message || 'Registration failed';
+      dispatch(loginFailure(message));
+      setStep(0);
+    }
   };
+
 
   const loadingSteps = [
     "Creating account...",

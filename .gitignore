@@ -39,3 +39,9 @@ frontend/frontend-api-small.txt
 
 # Generated Python package metadata
 *.egg-info/
+
+# Local SmartHireAI working backups
+*_working_backup_*/
+*.backup
+*.backup-*
+test-resume.pdf

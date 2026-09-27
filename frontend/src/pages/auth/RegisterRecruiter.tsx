@@ -4,8 +4,9 @@ import { useDispatch } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, User, Mail, Lock, Building2, MapPin, Phone, Briefcase } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { loginSuccess, loginStart, loginFailure } from '../../store/slices/authSlice';
-import { getStoredUsers, saveUsers, Recruiter } from '../../services/authDemo';
+import { loginSuccess, loginStart, loginFailure, buildSessionUserFromToken } from '../../store/slices/authSlice';
+import { registerRecruiter } from '../../services/authDemo';
+
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -35,43 +36,32 @@ export function RegisterRecruiter() {
     resolver: zodResolver(registerSchema)
   });
 
-  const onSubmit = (data: RegisterFormValues) => {
+  const onSubmit = async (data: RegisterFormValues) => {
     setStep(1);
     dispatch(loginStart());
 
-    setTimeout(() => {
-      const users = getStoredUsers();
-      if (users.find(u => u.email === data.email)) {
-        dispatch(loginFailure("Email already registered"));
-        setStep(0);
-        return;
-      }
-
-      const newRecruiter: Recruiter = {
-        id: 'rec_' + Math.random().toString(36).substr(2, 9),
-        name: data.name,
+    try {
+      const payload = {
+        full_name: data.name,
         email: data.email,
-        role: 'RECRUITER',
+        password: data.password,
         phone: data.phone,
-        companyName: data.companyName,
+        company_name: data.companyName,
         designation: data.designation,
         location: data.location,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(data.name)}&background=random`
       };
-
-      users.push(newRecruiter);
-      (newRecruiter as any).password = data.password;
-      saveUsers(users);
-      delete (newRecruiter as any).password;
-
-      setStep(2);
-      
-      setTimeout(() => {
-        dispatch(loginSuccess(newRecruiter));
-        navigate('/dashboard');
-      }, 800);
-    }, 800);
+      const token = await registerRecruiter(payload);
+      const sessionUser = buildSessionUserFromToken(token, data.email, 'RECRUITER');
+      if (!sessionUser) throw new Error('Failed to build session user from token');
+      dispatch(loginSuccess(sessionUser as any));
+      navigate('/dashboard');
+    } catch (err: any) {
+      const message = err?.response?.data?.detail || err?.message || 'Registration failed';
+      dispatch(loginFailure(message));
+      setStep(0);
+    }
   };
+
 
   const loadingSteps = [
     "Verifying company details...",

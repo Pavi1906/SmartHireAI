@@ -79,7 +79,20 @@ class RecruiterInterviewService:
         )
         db.add(interview)
         await db.commit()
-        await db.refresh(interview)
+
+        result = await db.execute(
+            select(RecruiterInterview)
+            .options(selectinload(RecruiterInterview.feedback))
+            .where(
+                RecruiterInterview.id == interview.id,
+                RecruiterInterview.company_id == company_id,
+            )
+        )
+        interview = result.scalars().first()
+
+        if not interview:
+            raise ValueError("Interview was created but could not be reloaded")
+
         return cls._format_interview(interview)
 
     @classmethod

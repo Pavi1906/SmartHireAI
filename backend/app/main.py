@@ -13,10 +13,17 @@ from app.core.exceptions import BaseDomainException, domain_exception_handler, g
 from app.infrastructure.cache.redis import redis_cache
 from app.api.v1.routes import health, auth
 from app.api.v1 import (
-    resumes, ats, placement, interviews,
-    recruiter, company, jobs, candidates, applications,
-    matching, campaigns, recruiter_interviews, offers,
-    recruiter_reports, recruiter_settings, recruiter_notifications
+    resumes,
+    jobs,
+    candidates,
+    applications,
+    recruiter,
+    company,
+    campaigns,
+    recruiter_interviews,
+    offers,
+    recruiter_reports,
+    recruiter_settings,
 )
 
 
@@ -80,23 +87,19 @@ app.add_exception_handler(Exception, global_exception_handler)
 
 # Register Routers (Student + Shared)
 app.include_router(health.router)
+app.include_router(health.router, prefix=settings.API_V1_STR)
 app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(resumes.router, prefix=settings.API_V1_STR)
-app.include_router(ats.router, prefix=settings.API_V1_STR)
-app.include_router(placement.router, prefix=settings.API_V1_STR)
-app.include_router(interviews.router, prefix=settings.API_V1_STR)
 
-# Register Routers (Recruiter Domain)
+# Recruiter / hiring workflow
 app.include_router(recruiter.router, prefix=settings.API_V1_STR)
 app.include_router(company.router, prefix=settings.API_V1_STR)
 app.include_router(jobs.router, prefix=settings.API_V1_STR)
 app.include_router(candidates.router, prefix=settings.API_V1_STR)
 app.include_router(applications.router, prefix=settings.API_V1_STR)
-app.include_router(matching.router, prefix=settings.API_V1_STR)
 app.include_router(campaigns.router, prefix=settings.API_V1_STR)
 app.include_router(recruiter_interviews.router, prefix=settings.API_V1_STR)
 app.include_router(offers.router, prefix=settings.API_V1_STR)
 app.include_router(recruiter_reports.router, prefix=settings.API_V1_STR)
 app.include_router(recruiter_settings.router, prefix=settings.API_V1_STR)
-app.include_router(recruiter_notifications.router, prefix=settings.API_V1_STR)
 

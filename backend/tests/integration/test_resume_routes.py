@@ -122,35 +122,33 @@ async def test_real_pdf_text_extraction_and_parsing():
 
 
 @pytest.mark.anyio
-async def test_ats_scoring_endpoint():
-    """Verify backend ATS scoring endpoint processes resume skills against JD requirements."""
+async def test_active_resume_endpoint():
+    """Verify backend returns active resume for authenticated student."""
     student_id = str(uuid.uuid4())
     token = create_access_token(subject=student_id, role="STUDENT")
     headers = {"Authorization": f"Bearer {token}"}
 
-    ats_payload = {
-        "resume_id": str(uuid.uuid4()),
-        "job_description_id": "test-target-job-001",
-        "resume_skills": ["Python", "FastAPI", "Docker", "SQL"],
-        "jd_skills": ["python", "fastapi", "docker", "kubernetes", "aws"]
-    }
-
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         # 1. Unauthenticated request returns 401
-        res_unauth = await ac.post("/api/v1/ats/score", json=ats_payload)
+        res_unauth = await ac.get("/api/v1/resumes/active")
         assert res_unauth.status_code == 401
 
-        # 2. Authenticated request returns 200 with score and breakdown
-        res_auth = await ac.post("/api/v1/ats/score", json=ats_payload, headers=headers)
-        assert res_auth.status_code == 200
-        data = res_auth.json()
-        assert "ats_score" in data
-        assert data["ats_score"] > 0
-        assert "matched_skills" in data
-        assert "missing_skills" in data
-        assert "breakdown" in data
-        assert len(data["matched_skills"]) == 3  # Python, FastAPI, Docker
-        assert "kubernetes" in data["missing_skills"]
-        assert "aws" in data["missing_skills"]
-        assert "semantic" in data["breakdown"]
-        assert "keywords" in data["breakdown"]
+        # 2. Student with no resume returns 404
+        res_empty = await ac.get("/api/v1/resumes/active", headers=headers)
+        assert res_empty.status_code == 404
+
+        # 3. Upload resume and verify /resumes/active returns it
+        pdf_bytes = create_valid_pdf_bytes(["Test Student", "Skills: Python, FastAPI"])
+        res_upload = await ac.post(
+            "/api/v1/resumes",
+            files={"file": ("test_resume.pdf", pdf_bytes, "application/pdf")},
+            headers=headers
+        )
+        assert res_upload.status_code == 202
+        uploaded_id = res_upload.json()["resume_id"]
+
+        res_active = await ac.get("/api/v1/resumes/active", headers=headers)
+        assert res_active.status_code == 200
+        data = res_active.json()
+        assert data["resume_id"] == uploaded_id
+        assert data["student_id"] == student_id

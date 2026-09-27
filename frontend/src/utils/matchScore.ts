@@ -8,18 +8,42 @@ export interface MatchResult {
   recommendation: string;
 }
 
+/**
+ * Canonical skill matching used by both the score calculation
+ * and the recruiter match breakdown UI.
+ */
+export function skillMatches(candidateSkill: string, jobSkill: string): boolean {
+  const cs = candidateSkill.trim().toLowerCase();
+  const js = jobSkill.trim().toLowerCase();
+
+  return (
+    cs === js ||
+    cs.includes(js) ||
+    js.includes(cs)
+  );
+}
+
+export function getMatchedRequiredSkills(candidate: Candidate, job: Job): string[] {
+  const candidateSkills = candidate.resumeData?.skills || [];
+  const requiredSkills = job.requiredSkills || [];
+
+  return requiredSkills.filter(req =>
+    candidateSkills.some(cs => skillMatches(cs, req))
+  );
+}
+
 export function calculateMatchScore(candidate: Candidate, job: Job): MatchResult {
   const candidateSkills = candidate.resumeData?.skills || [];
   const requiredSkills = job.requiredSkills || [];
   const preferredSkills = job.preferredSkills || [];
 
   const matchedReq = requiredSkills.filter(req =>
-    candidateSkills.some(cs => cs.toLowerCase() === req.toLowerCase() || cs.toLowerCase().includes(req.toLowerCase()) || req.toLowerCase().includes(cs.toLowerCase()))
+    candidateSkills.some(cs => skillMatches(cs, req))
   );
   const missingReq = requiredSkills.filter(req => !matchedReq.includes(req));
 
   const matchedPref = preferredSkills.filter(pref =>
-    candidateSkills.some(cs => cs.toLowerCase() === pref.toLowerCase() || cs.toLowerCase().includes(pref.toLowerCase()) || pref.toLowerCase().includes(cs.toLowerCase()))
+    candidateSkills.some(cs => skillMatches(cs, pref))
   );
 
   let baseScore = 0;

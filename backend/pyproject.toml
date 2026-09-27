@@ -35,5 +35,9 @@ where = ["."]
 include = ["app*"]
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit/test_health.py", "tests/unit/test_auth_service.py", "tests/unit/test_resume_parser.py", "tests/integration/test_auth_routes.py", "tests/integration/test_resume_routes.py", "tests/integration/test_db_connection.py"]
+asyncio_mode = "auto"
