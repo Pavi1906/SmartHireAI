@@ -161,6 +161,24 @@ export function RegisterStudent() {
           </div>
         </div>
 
+        <div className="space-y-2">
+          <label htmlFor="branch" className="text-sm font-medium">
+            Branch
+          </label>
+          <input
+            {...register("branch")}
+            id="branch"
+            type="text"
+            placeholder="Computer Science"
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+          />
+          {errors.branch && (
+            <p className="text-xs text-red-500">
+              {errors.branch.message}
+            </p>
+          )}
+        </div>
+        
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2 md:col-span-1">
             <label className="text-sm font-medium">Degree</label>
