@@ -41,8 +41,9 @@ async def lifespan(app: FastAPI):
 
     try:
         await run_in_threadpool(run_database_migrations)
-    except Exception as exc:
-        logger.warning(f"Database migration skipped during startup: {exc}")
+    except Exception:
+        logger.exception("Database migration failed; backend startup aborted.")
+        raise
 
     await redis_cache.connect()
     yield
