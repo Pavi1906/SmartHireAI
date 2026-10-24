@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  worker:
+    build:
+      context: ./backend
+      dockerfile: docker/Dockerfile
+    command: celery -A app.workers.celery_app worker --loglevel=info
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY before starting the worker}
+      POSTGRES_SERVER: ${POSTGRES_SERVER:-host.docker.internal}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in your environment}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your environment}
+      POSTGRES_DB: ${POSTGRES_DB:-smarthireai}
+      POSTGRES_SSL: ${POSTGRES_SSL:-false}
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+    volumes:
+      - ./backend/storage_bucket:/app/storage_bucket
+    networks:
+      - existing_services
+
+networks:
+  existing_services:
+    external: true
+    name: docker_default

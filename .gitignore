@@ -1,0 +1,91 @@
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+venv/
+.venv/
+node_modules/
+dist/
+build/
+
+.DS_Store
+
+storage_bucket/
+backend/storage_bucket/
+
+*.log
+
+backend_before_recruiter_backend/
+backend_backup_2026-08-19/
+
+artifacts/
+
+# Local/generated database and backup files
+*.rdb
+backend/backups/
+
+# Internal frontend API dumps
+frontend/frontend-api.txt
+frontend/frontend-api-small.txt
+
+# Generated Python package metadata
+*.egg-info/
+
+# Local SmartHireAI working backups
+*_working_backup_*/
+*.backup
+*.backup-*
+test-resume.pdf
+
+# Local Python environments
+.venv/
+**/.venv/
+env/
+**/env/
+
+# Frontend dependencies and build output
+**/node_modules/
+**/dist/
+**/build/
+**/.vercel/
+
+# Temporary source backups
+*.bak
+*.bak.*
+*.orig
+*.tmp
+
+# Local secrets
+.env
+.env.*
+**/.env
+**/.env.*
+!/.env.example
+!/frontend/.env.example
+
+# Local Docker Compose backup copies
+docker-compose.yml.backup
+docker-compose.yml.prepatch
+docker-compose.yml.save
+
+# Temporary backup files anywhere in the project
+**/*.bak
+**/*.bak.*
+**/*.backup
+**/*.backup-*
+
+# Local-only backend Compose stack
+backend/docker/docker-compose.yml
+
+# Allow safe environment templates to be committed
+!backend/.env.example
+!frontend/.env.example
