@@ -3,6 +3,7 @@ import uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 
 from alembic import command
 from alembic.config import Config
@@ -36,9 +37,10 @@ def run_database_migrations() -> None:
 async def lifespan(app: FastAPI):
     logger.info("Initializing SmartHireAI Backend Services...")
     try:
-        run_database_migrations()
-    except Exception as exc:  # pragma: no cover - defensive to keep app booting for local dev
-        logger.warning(f"Database migration skipped during startup: {exc}")
+        await run_in_threadpool(run_database_migrations)
+    except Exception:
+        logger.exception("Database migration failed; backend startup aborted.")
+        raise
     await redis_cache.connect()
     yield
     logger.info("Shutting down SmartHireAI Backend Services...")
