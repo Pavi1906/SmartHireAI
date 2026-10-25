@@ -14,6 +14,7 @@ from app.core.exceptions import BaseDomainException, domain_exception_handler, g
 from app.infrastructure.cache.redis import redis_cache
 from app.api.v1.routes import health, auth
 from app.api.v1 import (
+    ats,
     resumes,
     jobs,
     candidates,
@@ -92,6 +93,7 @@ app.include_router(health.router)
 app.include_router(health.router, prefix=settings.API_V1_STR)
 app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(resumes.router, prefix=settings.API_V1_STR)
+app.include_router(ats.router, prefix=settings.API_V1_STR)
 
 # Recruiter / hiring workflow
 app.include_router(recruiter.router, prefix=settings.API_V1_STR)
