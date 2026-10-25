@@ -55,33 +55,33 @@ export function CompanyReadiness() {
   useEffect(() => {
     if (activeResume) {
       setIsLoading(true);
-      
+
       const userSkills = activeResume.parsedContent?.skills || [];
-      
+
       const generateCompany = (name, logo, industry, missingPool, interviewProcess) => {
-          const baseScore = activeResume.score || 80;
-          const score = Math.min(100, Math.max(0, baseScore - (missingPool.length * 5)));
-          return {
-              name,
-              logo,
-              score,
-              industry,
-              requirements: {
-                  matched: userSkills.slice(0, 4),
-                  missing: missingPool
-              },
-              culture: 'Culture information for ' + name,
-              interviewProcess
-          };
+        const baseScore = activeResume.score || 80;
+        const score = Math.min(100, Math.max(0, baseScore - (missingPool.length * 5)));
+        return {
+          name,
+          logo,
+          score,
+          industry,
+          requirements: {
+            matched: userSkills.slice(0, 4),
+            missing: missingPool
+          },
+          culture: 'Culture information for ' + name,
+          interviewProcess
+        };
       };
-      
+
       const dynamicCompanies = [
-          generateCompany('Google', 'G', 'Big Tech', ['System Design', 'Go', 'GCP'], ['Phone Screen', 'DSA (2x)', 'System Design', 'Googlyness']),
-          generateCompany('Microsoft', 'M', 'Big Tech', ['C#', 'Azure', 'System Design'], ['Online Assessment', 'Technical (3x)', 'System Design']),
-          generateCompany('Amazon', 'A', 'Big Tech', ['AWS', 'Leadership Principles'], ['Online Assessment', 'Phone Screen', 'Loop (4x)']),
-          generateCompany('TCS', 'T', 'IT Services', ['Java', 'Spring Boot'], ['Aptitude', 'Technical', 'HR']),
-          generateCompany('Infosys', 'I', 'IT Services', ['Python', 'SQL'], ['Online Test', 'Technical', 'HR']),
-          generateCompany('Accenture', 'Ac', 'Consulting', ['Agile', 'Cloud Computing'], ['Cognitive Test', 'Technical', 'HR'])
+        generateCompany('Google', 'G', 'Big Tech', ['System Design', 'Go', 'GCP'], ['Phone Screen', 'DSA (2x)', 'System Design', 'Googlyness']),
+        generateCompany('Microsoft', 'M', 'Big Tech', ['C#', 'Azure', 'System Design'], ['Online Assessment', 'Technical (3x)', 'System Design']),
+        generateCompany('Amazon', 'A', 'Big Tech', ['AWS', 'Leadership Principles'], ['Online Assessment', 'Phone Screen', 'Loop (4x)']),
+        generateCompany('TCS', 'T', 'IT Services', ['Java', 'Spring Boot'], ['Aptitude', 'Technical', 'HR']),
+        generateCompany('Infosys', 'I', 'IT Services', ['Python', 'SQL'], ['Online Test', 'Technical', 'HR']),
+        generateCompany('Accenture', 'Ac', 'Consulting', ['Agile', 'Cloud Computing'], ['Cognitive Test', 'Technical', 'HR'])
       ];
 
       setCompanies(dynamicCompanies);
@@ -123,7 +123,7 @@ export function CompanyReadiness() {
                 {activeAction.type === 'interview' && `Starting a simulated interview environment tailored to ${activeAction.company.name}'s process.`}
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="bg-secondary/20 border border-border/50 rounded-xl p-6 flex flex-col items-center justify-center min-h-[150px] text-center">
               <div className="w-16 h-16 rounded-full bg-background border border-border flex items-center justify-center font-bold text-2xl mb-4">
                 {activeAction.company.logo}
@@ -158,11 +158,11 @@ export function CompanyReadiness() {
 
       <div className="grid grid-cols-1 gap-6">
         {isLoading ? (
-        <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
-          <div className="h-8 w-8 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
-          <p className="text-muted-foreground">AI is generating custom readiness reports based on your skills...</p>
-        </div>
-      ) : companies.map((company) => (
+          <div className="py-12 flex flex-col items-center justify-center text-center space-y-4">
+            <div className="h-8 w-8 rounded-full border-4 border-primary border-t-transparent animate-spin"></div>
+            <p className="text-muted-foreground">AI is generating custom readiness reports based on your skills...</p>
+          </div>
+        ) : companies.map((company) => (
           <Card key={company.name} className="overflow-hidden hover:border-primary/50 transition-colors">
             <div className="grid grid-cols-1 md:grid-cols-4 md:divide-x divide-border">
               {/* Score & Basic Info */}
@@ -181,12 +181,16 @@ export function CompanyReadiness() {
                 <div className="mt-6">
                   <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mb-2">Readiness Score</p>
                   <div className="flex items-end gap-2">
-                    <span className="text-4xl font-bold text-foreground leading-none">{company.score}%</span>
+                    <span className="text-4xl font-bold text-foreground leading-none">{Number(company.score.toFixed(1))}%</span>
                     <Badge variant={company.score >= 90 ? 'success' : 'secondary'} className="mb-1">
                       {company.score >= 90 ? 'Interview Ready' : 'Needs Prep'}
                     </Badge>
                   </div>
-                  <Progress value={company.score} className="h-1.5 mt-4" indicatorClassName={company.score >= 90 ? 'bg-emerald-500' : 'bg-primary'} />
+                  <Progress
+                    value={Number(company.score.toFixed(1))}
+                    className="h-1.5 mt-4"
+                    indicatorClassName={company.score >= 90 ? 'bg-emerald-500' : 'bg-primary'}
+                  />
                 </div>
               </div>
 
@@ -197,7 +201,7 @@ export function CompanyReadiness() {
                     <BrainCircuit className="h-4 w-4 text-primary" /> Profile Gap Analysis
                   </h4>
                 </div>
-                
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div>
                     <p className="text-xs font-semibold text-emerald-400 flex items-center gap-1 mb-2">
@@ -250,7 +254,7 @@ export function CompanyReadiness() {
           </Card>
         ))}
       </div>
-                
+
     </div>
   );
 }
