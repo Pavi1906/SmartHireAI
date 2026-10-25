@@ -488,7 +488,7 @@ def extract_experience(text: str) -> List[Dict[str, Any]]:
             while i < len(lines) and not DATE_RANGE_PATTERN.search(lines[i]):
                 if lines[i].startswith(("-", "*", "•")):
                     achievements.append(lines[i].lstrip("-*• \t").strip())
-                elif not any(re.search(r"\b(?:engineer|developer|intern|analyst|manager)\b", lines[i], re.IGNORECASE) and (i+1 < len(lines) and DATE_RANGE_PATTERN.search(lines[i+1]))):
+                elif not (re.search(r"\b(?:engineer|developer|intern|analyst|manager)\b", lines[i], re.IGNORECASE) and (i + 1 < len(lines) and DATE_RANGE_PATTERN.search(lines[i + 1]))):
                     achievements.append(lines[i])
                 else:
                     break
