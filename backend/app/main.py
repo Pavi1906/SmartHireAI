@@ -37,11 +37,18 @@ def run_database_migrations() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing SmartHireAI Backend Services...")
-    try:
-        await run_in_threadpool(run_database_migrations)
-    except Exception:
-        logger.exception("Database migration failed; backend startup aborted.")
-        raise
+    if settings.RUN_MIGRATIONS_ON_STARTUP:
+        try:
+            await run_in_threadpool(run_database_migrations)
+        except Exception:
+            logger.exception("Database migration failed; backend startup aborted.")
+            raise
+    else:
+        logger.info(
+            "Skipping startup database migrations because "
+            "RUN_MIGRATIONS_ON_STARTUP is disabled."
+        )
+
     await redis_cache.connect()
     yield
     logger.info("Shutting down SmartHireAI Backend Services...")
