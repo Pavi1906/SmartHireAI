@@ -156,9 +156,11 @@ def _normalize_for_matching(text: str) -> str:
 SECTION_HEADERS = {
     "education": [
         r"education(?:al\s+qualification(?:s)?)?",
+        r"educational\s+details",
         r"academic\s+(?:background|qualifications|details)",
     ],
     "experience": [
+        r"internship\s+experience",
         r"(?:work|professional)\s+experience",
         r"experience",
         r"employment(?:\s+history)?",
@@ -358,231 +360,290 @@ GPA_PATTERN = re.compile(
 
 
 def extract_education(text: str) -> List[Dict[str, Any]]:
-    """
-    Dynamically extract education blocks by detecting standard degrees,
-    associated institutions, graduation years, and GPA/percentages.
+    """Extract education records from a normal Education section or a table.
+
+    Some PDF extractors do not preserve table row order, and degree names may
+    wrap across several lines. If no explicit Education section exists, use the
+    resume's ``NAME OF EXAMINATION`` table and stop before the Skills section.
     """
     sections = extract_sections(text)
-    edu_text = sections.get("education", text)
+    edu_text = sections.get("education", "").strip()
 
-    lines = [line.strip() for line in edu_text.split("\n") if line.strip()]
+    if not edu_text:
+        table_marker = re.search(r"NAME\s+OF\s+EXAMINATION", text, re.IGNORECASE)
+        if table_marker:
+            remainder = text[table_marker.end():]
+            next_section = re.search(r"(?im)^\s*SKILLS\s*:?\s*$", remainder)
+            edu_text = remainder[:next_section.start()] if next_section else remainder
+        else:
+            # Do not search the entire resume for degree abbreviations: terms
+            # such as "MS Excel" elsewhere must not become a fake M.Sc degree.
+            return []
+
+    candidates = []
+    for pattern, canonical in DEGREE_PATTERNS:
+        # School names like "Higher Secondary School" must not create an extra
+        # HSC/SSC record when the table already has explicit HSC/SSC labels.
+        if canonical == "HSC":
+            pattern = r"\bHSC\b|\b12th\b"
+        elif canonical == "SSC":
+            pattern = r"\bSSC\b|\b10th\b"
+
+        for match in re.finditer(pattern, edu_text, re.IGNORECASE):
+            candidates.append((match.start(), match.end(), canonical))
+
+    # Longest match first at a shared position (e.g. full degree name vs alias),
+    # then keep non-overlapping records in document order.
+    candidates.sort(key=lambda item: (item[0], -(item[1] - item[0])))
+    distinct = []
+    for candidate in candidates:
+        if distinct and candidate[0] < distinct[-1][1]:
+            continue
+        distinct.append(candidate)
+
     results: List[Dict[str, Any]] = []
+    institution_keywords = {
+        "university", "college", "institute", "school", "academy", "campus", "polytechnic"
+    }
 
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        matched_degree_canon = None
+    for index, (start, end, canonical) in enumerate(distinct):
+        next_start = distinct[index + 1][0] if index + 1 < len(distinct) else len(edu_text)
+        context = edu_text[end:next_start]
 
-        for pattern, canon_title in DEGREE_PATTERNS:
-            if re.search(pattern, line, re.IGNORECASE):
-                matched_degree_canon = canon_title
-                break
+        year_match = SINGLE_YEAR_PATTERN.search(context)
+        year = year_match.group(0) if year_match else ""
+        before_year = context[:year_match.start()] if year_match else context
 
-        if matched_degree_canon:
-            # Check current and next lines for institution, year, and GPA
-            context_block = lines[i:i+4]
-            full_context = " | ".join(context_block)
+        # Pick the last institution phrase in the table cell block. This favors
+        # the college/institute name over a preceding university/board column.
+        tokens = re.findall(r"[A-Za-z][A-Za-z.'-]*|&|\d+(?:\.\d+)?%?", before_year)
+        keyword_positions = [i for i, token in enumerate(tokens) if token.lower() in institution_keywords]
+        school = ""
+        if keyword_positions:
+            last_position = keyword_positions[-1]
+            previous_position = keyword_positions[-2] if len(keyword_positions) > 1 else None
+            if previous_position is not None:
+                school_start = previous_position + 1
+            else:
+                board_positions = [i for i, token in enumerate(tokens[:last_position]) if token.lower() == "board"]
+                school_start = board_positions[-1] + 1 if board_positions else 0
+            school = " ".join(tokens[school_start:]).strip(" &")
 
-            # Year extraction
-            year = None
-            year_match = SINGLE_YEAR_PATTERN.search(full_context)
-            if year_match:
-                year = year_match.group(0)
-
-            # GPA/Score extraction
-            gpa = None
-            gpa_match = GPA_PATTERN.search(full_context)
-            if gpa_match:
-                gpa = gpa_match.group(0)
-            elif re.search(r"\bpursuing\b", full_context, re.IGNORECASE):
+        gpa = ""
+        gpa_match = GPA_PATTERN.search(context)
+        if gpa_match:
+            gpa = gpa_match.group(0).strip()
+        else:
+            percentage_match = re.search(r"\b\d{2}(?:\.\d{1,2})?\s*%", context)
+            if percentage_match:
+                gpa = percentage_match.group(0).strip()
+            elif re.search(r"\bpursuing\b", context, re.IGNORECASE):
                 gpa = "Pursuing"
 
-            # School/University extraction
-            school = None
-            school_keywords = r"(?:University|College|Institute|School|Academy|Campus|Polytechnic)"
-            for ctx_line in context_block:
-                if re.search(school_keywords, ctx_line, re.IGNORECASE):
-                    # Clean out degrees or dates if embedded on the same line
-                    cleaned_school = ctx_line
-                    for deg_pat, _ in DEGREE_PATTERNS:
-                        cleaned_school = re.sub(deg_pat, "", cleaned_school, flags=re.IGNORECASE)
-                    if year:
-                        cleaned_school = cleaned_school.replace(year, "")
-                    cleaned_school = re.sub(r"[,|\-–]", " ", cleaned_school).strip()
-                    cleaned_school = re.sub(r"\s+", " ", cleaned_school)
-                    if cleaned_school:
-                        school = cleaned_school
-                        break
-
-            # Fallback if university name was on next line without explicit keyword
-            if not school and len(context_block) > 1:
-                next_line = context_block[1]
-                if not any(re.search(p, next_line, re.IGNORECASE) for p, _ in DEGREE_PATTERNS):
-                    if not SINGLE_YEAR_PATTERN.fullmatch(next_line):
-                        school = next_line
-
-            results.append({
-                "degree": matched_degree_canon,
-                "school": school or "",
-                "year": year or "",
-                "gpa": gpa or ""
-            })
-            i += 2
-        else:
-            i += 1
+        results.append({
+            "degree": canonical,
+            "school": school,
+            "year": year,
+            "gpa": gpa,
+        })
 
     return results
-
 
 # ============================================================
 # EXPERIENCE EXTRACTION
 # ============================================================
 
 def extract_experience(text: str) -> List[Dict[str, Any]]:
+    """Extract dated work/internship entries even when PDF headings are reordered.
+
+    Resume PDFs commonly place role, company, and date on one line, or put the
+    date on the line after the role/company. Search dated entries across the
+    whole extracted text rather than depending only on a section header.
     """
-    Dynamically extract professional & internship experience from text.
-    Captures company, role, duration, and bullet point achievements.
-    Supports single-line and multi-line role/company/duration headers.
-    """
-    sections = extract_sections(text)
-    exp_text = sections.get("experience", "")
-    if not exp_text:
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    if not lines:
         return []
 
-    lines = [l.strip() for l in exp_text.split("\n") if l.strip()]
-    results: List[Dict[str, Any]] = []
-    
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        date_range_match = DATE_RANGE_PATTERN.search(line)
-        single_year_match = SINGLE_YEAR_PATTERN.search(line) if not date_range_match else None
-        
-        has_title_keyword = bool(re.search(
-            r"\b(?:engineer|developer|intern(?:ship)?|analyst|manager|lead|consultant|architect|specialist|assistant)\b",
-            line,
-            re.IGNORECASE
-        ))
+    title_pattern = re.compile(
+        r"\b(?:engineer|developer|intern(?:ship)?|analyst|manager|lead|consultant|"
+        r"architect|specialist|assistant|designer|scientist|administrator)\b",
+        re.IGNORECASE,
+    )
+    stop_section_pattern = re.compile(
+        r"^\s*(?:certifications?|achievements?|languages?\s+known|declaration|"
+        r"projects?|skills|education|objective)\s*:?\s*$",
+        re.IGNORECASE,
+    )
 
-        # Check if this line is an experience entry header
-        # Pattern A: Single line with date range: "Software Engineer at TechCorp 2022 - 2024"
-        # Pattern B: Multi-line header: Line 1 = Role, Line 2 = Company, Line 3 = Date
-        if (date_range_match or (single_year_match and has_title_keyword)) and not line.startswith(("-", "*", "•")):
-            duration = date_range_match.group(0).strip() if date_range_match else single_year_match.group(0).strip()
-            line_without_date = line.replace(duration, "").strip(" -–|,\t")
+    entries = []
+    seen_date_lines = set()
+    for date_index, line in enumerate(lines):
+        date_match = DATE_RANGE_PATTERN.search(line)
+        if not date_match:
+            continue
 
-            parts = [p.strip() for p in re.split(r"\s+(?:at|@|,|–|-|\|)\s+", line_without_date) if p.strip()]
-            role = ""
-            company = ""
-            if len(parts) >= 2:
-                role = parts[0]
-                company = parts[1]
-            elif len(parts) == 1:
-                if has_title_keyword:
-                    role = parts[0]
-                else:
-                    company = parts[0]
-
-            achievements = []
-            i += 1
-            while i < len(lines) and not DATE_RANGE_PATTERN.search(lines[i]):
-                if lines[i].startswith(("-", "*", "•")):
-                    achievements.append(lines[i].lstrip("-*• \t").strip())
-                elif not (re.search(r"\b(?:engineer|developer|intern|analyst|manager)\b", lines[i], re.IGNORECASE) and (i + 1 < len(lines) and DATE_RANGE_PATTERN.search(lines[i + 1]))):
-                    achievements.append(lines[i])
-                else:
-                    break
-                i += 1
-
-            results.append({
-                "company": company,
-                "role": role,
-                "duration": duration,
-                "achievements": achievements
-            })
-        elif has_title_keyword and not line.startswith(("-", "*", "•")):
-            # Multi-line pattern: current line is Role
-            role = line
-            company = ""
-            duration = ""
-            i += 1
-
-            if i < len(lines) and not lines[i].startswith(("-", "*", "•")) and not DATE_RANGE_PATTERN.search(lines[i]):
-                company = lines[i]
-                i += 1
-
-            if i < len(lines) and DATE_RANGE_PATTERN.search(lines[i]):
-                duration = DATE_RANGE_PATTERN.search(lines[i]).group(0).strip()
-                i += 1
-
-            achievements = []
-            while i < len(lines) and not bool(re.search(r"\b(?:engineer|developer|intern(?:ship)?|analyst|manager|lead|consultant)\b", lines[i], re.IGNORECASE) and not lines[i].startswith(("-", "*", "•"))):
-                ach = lines[i].lstrip("-*• \t").strip()
-                if ach:
-                    achievements.append(ach)
-                i += 1
-
-            results.append({
-                "company": company,
-                "role": role,
-                "duration": duration,
-                "achievements": achievements
-            })
+        if title_pattern.search(line):
+            header_start = date_index
+            header_text = line
         else:
-            i += 1
+            title_index = None
+            # Support: Role / Company / Date, and Role + Company / Date.
+            for previous_index in range(date_index - 1, max(-1, date_index - 3), -1):
+                if title_pattern.search(lines[previous_index]):
+                    title_index = previous_index
+                    break
+            if title_index is None:
+                continue
+            header_start = title_index
+            if date_index - title_index == 1:
+                header_text = f"{lines[title_index]} {line}"
+            else:
+                header_text = f"{lines[title_index]} | {lines[title_index + 1]} {line}"
+
+        if date_index in seen_date_lines:
+            continue
+        seen_date_lines.add(date_index)
+
+        header_without_date = DATE_RANGE_PATTERN.sub("", header_text, count=1)
+        header_without_date = re.sub(r"^[\s•*+\-]+", "", header_without_date)
+        header_without_date = re.sub(r"\s+", " ", header_without_date).strip(" \t|,-")
+
+        if "|" in header_without_date:
+            role, company = header_without_date.split("|", 1)
+        else:
+            parts = re.split(r"\s+(?:at|@|,|–|-)\s+", header_without_date, maxsplit=1, flags=re.IGNORECASE)
+            role = parts[0] if parts else header_without_date
+            company = parts[1] if len(parts) > 1 else ""
+
+        role = role.strip(" \t•*-+,")
+        company = company.strip(" \t•*-+,")
+        entries.append({
+            "header_start": header_start,
+            "date_index": date_index,
+            "company": company,
+            "role": role,
+            "duration": date_match.group(0).strip(),
+        })
+
+    entries.sort(key=lambda item: item["date_index"])
+    results: List[Dict[str, Any]] = []
+    for index, entry in enumerate(entries):
+        next_header = entries[index + 1]["header_start"] if index + 1 < len(entries) else len(lines)
+        end_index = next_header
+        for line_index in range(entry["date_index"] + 1, min(next_header, len(lines))):
+            if stop_section_pattern.match(lines[line_index]):
+                end_index = line_index
+                break
+
+        achievements = []
+        for raw_line in lines[entry["date_index"] + 1:end_index]:
+            stripped = raw_line.strip()
+            if not stripped or re.fullmatch(r"[•*+\-\s]+", stripped):
+                continue
+            if stop_section_pattern.match(stripped):
+                break
+            # A displaced INTERNSHIP EXPERIENCE heading is harmless and should
+            # not prevent the continuation text from being attached to the role.
+            if re.fullmatch(r"INTERNSHIP\s+EXPERIENCE\s*:?", stripped, re.IGNORECASE):
+                continue
+            cleaned = stripped.lstrip("-*•+ \t").strip()
+            if cleaned:
+                achievements.append(cleaned)
+
+        results.append({
+            "company": entry["company"],
+            "role": entry["role"],
+            "duration": entry["duration"],
+            "achievements": achievements,
+        })
 
     return results
-
 
 # ============================================================
 # PROJECTS EXTRACTION
 # ============================================================
 
 def extract_projects(text: str) -> List[Dict[str, Any]]:
+    """Extract projects from explicit GitHub bullet entries or a Projects section.
+
+    For some PDFs, project details are emitted before the PROJECTS heading. A
+    bullet title with a GitHub link is a reliable project boundary in that case.
     """
-    Dynamically extract projects by identifying titles and descriptions
-    under project sections without hardcoded title lists.
-    """
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+
+    explicit_headers = []
+    for index, line in enumerate(lines):
+        if re.match(r"^[\s]*[•*+\-]\s*", line) and re.search(r"\bgithub\b|github\.com", line, re.IGNORECASE):
+            title = line.split("|", 1)[0]
+            title = re.sub(r"^[\s•*+\-]+", "", title).strip(" -–|:")
+            if title and len(title.split()) <= 12:
+                explicit_headers.append((index, title))
+
+    if explicit_headers:
+        stop_section_pattern = re.compile(
+            r"^\s*(?:certifications?|achievements?|languages?\s+known|declaration|"
+            r"projects?|skills|education|objective)\s*:?\s*$",
+            re.IGNORECASE,
+        )
+        results: List[Dict[str, Any]] = []
+        for header_index, (line_index, title) in enumerate(explicit_headers):
+            next_header = explicit_headers[header_index + 1][0] if header_index + 1 < len(explicit_headers) else len(lines)
+            description_lines = []
+            for raw_line in lines[line_index + 1:next_header]:
+                if stop_section_pattern.match(raw_line):
+                    break
+                cleaned = raw_line.lstrip("-*•+ \t").strip()
+                if cleaned:
+                    description_lines.append(cleaned)
+            description = " ".join(description_lines)
+            results.append({
+                "name": title,
+                "description": description,
+                "technologies": extract_skills(f"{title} {description}"),
+            })
+        return results
+
+    # Preserve the general title/description heuristic for simpler resumes that
+    # contain a conventional Projects heading and no explicit GitHub links.
     sections = extract_sections(text)
     proj_text = sections.get("projects", "")
     if not proj_text:
         return []
 
-    lines = [l.strip() for l in proj_text.split("\n") if l.strip()]
+    project_lines = [line.strip() for line in proj_text.split("\n") if line.strip()]
     results: List[Dict[str, Any]] = []
-    current_proj: Optional[Dict[str, Any]] = None
+    current_project: Optional[Dict[str, Any]] = None
 
-    for line in lines:
-        # A project title is typically a concise header line not starting with bullets
+    for line in project_lines:
         is_bullet = line.startswith(("-", "*", "•"))
         is_tech_line = bool(re.match(r"^(?:technologies|tools|stack|tech)\s*[:\-]", line, re.IGNORECASE))
 
         if not is_bullet and not is_tech_line and len(line.split()) <= 8 and not line.endswith((".", ";")):
-            if current_proj:
-                # Infer skills from description + title
-                skills = extract_skills(f"{current_proj['name']} {current_proj['description']}")
-                current_proj["technologies"] = skills
-                results.append(current_proj)
+            if current_project:
+                current_project["technologies"] = extract_skills(
+                    f"{current_project['name']} {current_project['description']}"
+                )
+                results.append(current_project)
 
-            current_proj = {
+            current_project = {
                 "name": line.strip(" -–|:"),
                 "description": "",
-                "technologies": []
+                "technologies": [],
             }
-        elif current_proj:
+        elif current_project:
             desc_line = line.lstrip("-*• \t").strip()
-            if current_proj["description"]:
-                current_proj["description"] += " " + desc_line
+            if current_project["description"]:
+                current_project["description"] += " " + desc_line
             else:
-                current_proj["description"] = desc_line
+                current_project["description"] = desc_line
 
-    if current_proj:
-        skills = extract_skills(f"{current_proj['name']} {current_proj['description']}")
-        current_proj["technologies"] = skills
-        results.append(current_proj)
+    if current_project:
+        current_project["technologies"] = extract_skills(
+            f"{current_project['name']} {current_project['description']}"
+        )
+        results.append(current_project)
 
     return results
-
 
 # ============================================================
 # CERTIFICATIONS EXTRACTION

@@ -260,3 +260,96 @@ minimal@example.com
     assert parsed["projects"] == []
     assert parsed["certifications"] == []
     assert parsed["achievements"] == []
+
+
+def test_resume_with_wrapped_education_and_out_of_order_headings():
+    # Representative text extracted from a real multi-page resume PDF. The
+    # education table wraps degree names, experience entries are bullet-prefixed,
+    # and the PROJECTS heading appears after the project details.
+    text = """PAVITHRA P
+OBJECTIVE:
+MCA student with internship opportunities.
+NAME OF
+EXAMINATION
+BOARD INSTITUITION
+YEAR OF
+PASSING
+PERCENTAGE
+OF MARKS
+Master of Computer
+Applications
+Anna
+University
+KCG College of
+Technology
+2027
+Pursuing
+Bachelor of Computer
+Applications
+Hindustan
+University
+Hindustan Institute
+of Technology &
+Science
+2025 85.12 %
+HSC TN State Board
+Vidhya Matric
+Higher
+Secondary
+School
+2022 72.67%
+SSC TN State Board
+Vidhya Matric
+Higher
+Secondary
+School
+2020 87.2 %
+SKILLS:
+Python, TypeScript, React, FastAPI, SQL, MS Excel
+• Artificial Intelligence Intern | Internship Studio Jan 2025 - Feb 2025
+Built a Face Recognition System using Python, OpenCV, and MLP Neural Networks.
+• Data Analytics Intern | Internship Studio Sep 2024 - Oct 2024
+Analyzed datasets using Python, Pandas, SQL, and Excel.
+• Web Design & Development Intern | Internship Studio Oct 2024 - Nov 2024
+INTERNSHIP EXPERIENCE:
+Engineered and deployed a responsive E-Commerce website using HTML, CSS, JavaScript, and Bootstrap.
+CERTIFICATIONS:
+Google Data Analytics Professional Certificate
+ACHIEVEMENTS:
+Won a university hackathon
+LANGUAGES KNOWN:
+English, Tamil
+DECLARATION:
+The information above is true.
+• TaskCore FastAPI Manager | GitHub: https://github.com/Pavi1906/taskcore-fastapi-manager
+Built a full-stack task management application using React, FastAPI, SQLAlchemy, JWT Authentication, and Docker.
+• Hack2Hire Interview Engine | GitHub: https://github.com/Pavi1906/hack2hire-interview-engine
+Created an interview simulation platform using TypeScript.
+• CampusAssist | GitHub: https://github.com/Pavi1906/CampusAssist
+Built a campus emergency management application using TypeScript.
+• Audio Emotion Recognition System |GitHub: https://github.com/Pavi1906/audio-emotion-recognition-ml
+Built an audio emotion classifier using Python, TensorFlow, CNN, and MFCC.
+PROJECTS:
+"""
+    parsed = parse_resume_text(text)
+
+    degrees = [entry["degree"] for entry in parsed["education"]]
+    assert degrees == [
+        "Master of Computer Applications",
+        "Bachelor of Computer Applications",
+        "HSC",
+        "SSC",
+    ]
+    assert all(entry["degree"] != "M.Sc" for entry in parsed["education"])
+    assert len(parsed["experience"]) == 3
+    assert any("Artificial Intelligence Intern" in entry["role"] for entry in parsed["experience"])
+    assert any("Data Analytics Intern" in entry["role"] for entry in parsed["experience"])
+    assert any("Web Design & Development Intern" in entry["role"] for entry in parsed["experience"])
+
+    project_names = [entry["name"] for entry in parsed["projects"]]
+    assert project_names == [
+        "TaskCore FastAPI Manager",
+        "Hack2Hire Interview Engine",
+        "CampusAssist",
+        "Audio Emotion Recognition System",
+    ]
