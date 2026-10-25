@@ -7,7 +7,7 @@ SmartHireAI is a web-based placement and recruitment platform that brings studen
 ## 🚀 Live Demo
 
 - **Frontend Application:** [SmartHireAI — Open App](https://smarthireai-frontend.vercel.app)
-- **Backend API:** [SmartHireAI Backend](https://smarthireai-backend-mbnz.onrender.com/api/v1)
+- **Backend API:** [SmartHireAI Backend](https://smarthireai-backend-mbnz.onrender.com/api/v1/health)
 - **API Documentation (Swagger):** [View API Docs](https://smarthireai-backend-mbnz.onrender.com/docs)
 
 > **Note:** The backend may take a little time to wake up if the hosting service is idle. These links should be tested to confirm the deployments are currently available.
