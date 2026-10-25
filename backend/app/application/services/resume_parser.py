@@ -662,6 +662,7 @@ def parse_resume_text(text: str) -> Dict[str, Any]:
     contact = extract_contact_info(cleaned_text)
 
     return {
+        "text": cleaned_text,
         "name": contact["name"],
         "email": contact["email"],
         "phone": contact["phone"],

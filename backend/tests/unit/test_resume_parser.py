@@ -26,6 +26,7 @@ TechCorp
 Developed microservices using Python and FastAPI.
 """
     parsed = parse_resume_text(text)
+    assert "Software Engineer" in parsed["text"]
     assert parsed["name"] == "John Doe"
     assert parsed["email"] == "john@example.com"
     assert parsed["phone"] == "+91 9876543210"
