@@ -4,6 +4,14 @@ SmartHireAI is a web-based placement and recruitment platform that brings studen
 
 > **Project status:** This is an evolving academic/prototype project, not a validated production hiring system. Some screens contain illustrative or demo values while backend integration is being completed. ATS scores and placement indicators are experimental decision-support outputs; they have not been demonstrated to be statistically valid and must not be the sole basis for hiring or career decisions.
 
+## 🚀 Live Demo
+
+- **Frontend Application:** [SmartHireAI — Open App](https://smarthireai-frontend.vercel.app)
+- **Backend API:** [SmartHireAI Backend](https://smarthireai-backend-mbnz.onrender.com)
+- **API Documentation (Swagger):** [View API Docs](https://smarthireai-backend-mbnz.onrender.com/docs)
+
+> **Note:** The backend may take a little time to wake up if the hosting service is idle. These links should be tested to confirm the deployments are currently available.
+
 ## Contents
 
 - [What it does](#what-it-does)
