@@ -158,6 +158,7 @@ SECTION_HEADERS = {
         r"education(?:al\s+qualification(?:s)?)?",
         r"educational\s+details",
         r"academic\s+(?:background|qualifications|details)",
+        r"education\s+qualification(?:s)?",
     ],
     "experience": [
         r"internship\s+experience",
@@ -341,7 +342,7 @@ DEGREE_PATTERNS = [
     (r"Master\s+of\s+Technology|\bM\.?Tech\b", "M.Tech"),
     (r"Master\s+of\s+Engineering|\bM\.?E\.?\b", "M.E."),
     (r"Bachelor\s+of\s+Science|\bB\.?Sc\b|\bB\.?S\.?\b", "B.Sc"),
-    (r"Master\s+of\s+Science|\bM\.?Sc\b|\bM\.?S\.?\b", "M.Sc"),
+    (r"Master\s+of\s+Science|\bM\.?\s*Sc\.?\b|\bM\.S\.?\b", "M.Sc"),
     (r"Master\s+of\s+Business\s+Administration|\bMBA\b", "MBA"),
     (r"Bachelor\s+of\s+Business\s+Administration|\bBBA\b", "BBA"),
     (r"Bachelor\s+of\s+Commerce|\bB\.?Com\b", "B.Com"),
@@ -380,6 +381,61 @@ def extract_education(text: str) -> List[Dict[str, Any]]:
             # such as "MS Excel" elsewhere must not become a fake M.Sc degree.
             return []
 
+    # Bound education-table fallback before later bullet sections.
+    if not sections.get("education", "").strip():
+        table_marker = re.search(
+            r"NAME\s+OF\s+EXAMINATION", text, re.IGNORECASE
+        )
+        if table_marker:
+            fallback_lines = text[table_marker.start():].splitlines()
+            degree_row_seen = False
+
+            for line_index, line in enumerate(
+                fallback_lines[1:], start=1
+            ):
+                if re.search(
+                    r"\b(?:Master\s+of|Bachelor\s+of|MCA|BCA|"
+                    r"HSC|SSC|SSLC|10th|12th)\b",
+                    line,
+                    re.IGNORECASE,
+                ):
+                    degree_row_seen = True
+
+                if degree_row_seen and re.match(
+                    r"^\s*[•●▪◦]\s+\S", line
+                ):
+                    edu_text = "\n".join(
+                        fallback_lines[:line_index]
+                    ).strip()
+                    break
+
+    # Normalize full degree names followed by their abbreviations.
+    full_degree_aliases = [
+        (r"Master\s+of\s+Computer\s+Applications", r"MCA"),
+        (r"Bachelor\s+of\s+Computer\s+Applications", r"BCA"),
+        (r"Bachelor\s+of\s+Technology", r"B\.?\s*Tech\.?"),
+        (r"Bachelor\s+of\s+Engineering", r"B\.?\s*E\.?"),
+        (r"Master\s+of\s+Technology", r"M\.?\s*Tech\.?"),
+        (r"Master\s+of\s+Engineering", r"M\.?\s*E\.?"),
+        (r"Bachelor\s+of\s+Science", r"B\.?\s*(?:Sc|S)\.?"),
+        (r"Master\s+of\s+Science", r"M\.?\s*(?:Sc|S)\.?"),
+        (r"Master\s+of\s+Business\s+Administration", r"MBA"),
+        (r"Bachelor\s+of\s+Business\s+Administration", r"BBA"),
+        (r"Bachelor\s+of\s+Commerce", r"B\.?\s*Com\.?"),
+        (r"Bachelor\s+of\s+Arts", r"B\.?\s*A\.?"),
+        (r"Master\s+of\s+Arts", r"M\.?\s*A\.?"),
+        (r"Doctor\s+of\s+Philosophy", r"Ph\.?\s*D\.?"),
+        (r"Secondary\s+School\s+Leaving\s+Certificate", r"SSLC"),
+    ]
+
+    for full_pattern, alias_pattern in full_degree_aliases:
+        edu_text = re.sub(
+            rf"({full_pattern})\s*\(\s*{alias_pattern}\s*\)",
+            r"\1",
+            edu_text,
+            flags=re.IGNORECASE,
+        )
+
     candidates = []
     for pattern, canonical in DEGREE_PATTERNS:
         # School names like "Higher Secondary School" must not create an extra
@@ -387,10 +443,29 @@ def extract_education(text: str) -> List[Dict[str, Any]]:
         if canonical == "HSC":
             pattern = r"\bHSC\b|\b12th\b"
         elif canonical == "SSC":
-            pattern = r"\bSSC\b|\b10th\b"
+            pattern = (
+                r"\b(?:SSC|SSLC)\b|\b10th\b|"
+                r"Secondary\s+School\s+Leaving\s+Certificate"
+            )
 
         for match in re.finditer(pattern, edu_text, re.IGNORECASE):
             candidates.append((match.start(), match.end(), canonical))
+
+    # Recognize common full labels not covered by the short-degree patterns.
+    additional_degree_patterns = [
+        (r"\bMaster\s+of\s+Computer\s+Science\b", "Master of Computer Science"),
+        (r"\bHigher\s+Secondary\s+Examination\b", "HSC"),
+        (r"\bSecondary\s+Examination\b", "SSC"),
+    ]
+    for extra_pattern, extra_canonical in additional_degree_patterns:
+        for match in re.finditer(extra_pattern, edu_text, re.IGNORECASE):
+            candidates.append((match.start(), match.end(), extra_canonical))
+
+    # In some Indian resumes, the final school qualification is labeled State Board Examination.
+    # Map it to SSC only when Higher Secondary Examination is also present in this education section.
+    if re.search(r"\bHigher\s+Secondary\s+Examination\b", edu_text, re.IGNORECASE):
+        for state_board_match in re.finditer(r"\bState\s+Board\s+Examination\b", edu_text, re.IGNORECASE):
+            candidates.append((state_board_match.start(), state_board_match.end(), "SSC"))
 
     # Longest match first at a shared position (e.g. full degree name vs alias),
     # then keep non-overlapping records in document order.
@@ -410,34 +485,130 @@ def extract_education(text: str) -> List[Dict[str, Any]]:
         next_start = distinct[index + 1][0] if index + 1 < len(distinct) else len(edu_text)
         context = edu_text[end:next_start]
 
-        year_match = SINGLE_YEAR_PATTERN.search(context)
-        year = year_match.group(0) if year_match else ""
-        before_year = context[:year_match.start()] if year_match else context
+        # Do not let the final education record absorb metrics from later sections
+        # (for example, an internship bullet saying "increasing ... by 25%").
+        section_boundary = re.search(
+            r"(?im)^\s*(?:TRAINING\s+EXPERIENCE|WORK\s+EXPERIENCE|"
+            r"PROFESSIONAL\s+EXPERIENCE|EXPERIENCE|CORE\s+SKILLS|"
+            r"TECHNICAL\s+SKILLS|SKILLS|PROJECTS|CERTIFICATIONS|"
+            r"ACHIEVEMENTS|LANGUAGES(?:\s+KNOWN)?|DECLARATION|"
+            r"ADDITIONAL\s+INFORMATION)\s*:?\s*$",
+            context,
+        )
+        if section_boundary:
+            context = context[:section_boundary.start()]
 
-        # Pick the last institution phrase in the table cell block. This favors
-        # the college/institute name over a preceding university/board column.
-        tokens = re.findall(r"[A-Za-z][A-Za-z.'-]*|&|\d+(?:\.\d+)?%?", before_year)
-        keyword_positions = [i for i, token in enumerate(tokens) if token.lower() in institution_keywords]
-        school = ""
-        if keyword_positions:
-            last_position = keyword_positions[-1]
-            previous_position = keyword_positions[-2] if len(keyword_positions) > 1 else None
-            if previous_position is not None:
-                school_start = previous_position + 1
-            else:
-                board_positions = [i for i, token in enumerate(tokens[:last_position]) if token.lower() == "board"]
-                school_start = board_positions[-1] + 1 if board_positions else 0
-            school = " ".join(tokens[school_start:]).strip(" &")
+        date_token = (
+            r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|"
+            r"Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|"
+            r"Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(?:19|20)\d{2}"
+            r"|(?:\d{1,2}/)?(?:19|20)\d{2}"
+        )
+        flexible_date_range = re.search(
+            rf"(?<![A-Za-z0-9])(?P<start>{date_token})\s*(?:-|–|—|to)\s*"
+            rf"(?P<end>{date_token})(?![A-Za-z0-9])",
+            context,
+            re.IGNORECASE,
+        )
+        date_range_match = DATE_RANGE_PATTERN.search(context)
+
+        if flexible_date_range:
+            end_year_match = re.search(
+                r"(?:19|20)\d{2}", flexible_date_range.group("end")
+            )
+            year = end_year_match.group(0) if end_year_match else ""
+            before_year = context[:flexible_date_range.start()]
+        elif date_range_match:
+            year = date_range_match.group(2) or date_range_match.group(1) or ""
+            before_year = context[:date_range_match.start()]
+        else:
+            year_match = SINGLE_YEAR_PATTERN.search(context)
+            year = year_match.group(0) if year_match else ""
+            before_year = (
+                context[:year_match.start()] if year_match else context
+            )
+
+        # Prefer the institution following the degree when available. Some resumes
+        # put the institution on the line before the degree, so fall back to that
+        # local record context only when the forward text has no institution marker.
+        school_text = before_year
+        # Parenthesized specializations (e.g. MBA (Human Resource)) are not schools.
+        school_text = re.sub(r"\([^)]*\)", " ", school_text)
+        institution_marker = (
+            r"\b(?:college|institute|school|academy|campus|polytechnic|university)\b"
+        )
+        if not re.search(institution_marker, school_text, re.IGNORECASE):
+            previous_boundary = distinct[index - 1][1] if index > 0 else 0
+            preceding_text = edu_text[previous_boundary:start]
+            preceding_lines = [
+                line.strip() for line in preceding_text.splitlines() if line.strip()
+            ]
+            for preceding_line in reversed(preceding_lines[-8:]):
+                if (
+                    re.search(institution_marker, preceding_line, re.IGNORECASE)
+                    and not re.search(
+                        r"\b(?:skills|experience|projects|certifications|"
+                        r"achievements|education|professional summary)\b",
+                        preceding_line,
+                        re.IGNORECASE,
+                    )
+                ):
+                    school_text = preceding_line
+                    break
+
+        school_text = re.sub(
+            r"\([^)]*\b(?:university|board)\b[^)]*\)",
+            " ",
+            school_text,
+            flags=re.IGNORECASE,
+        )
+
+        school_text = re.sub(
+            r"\b(?:pursuing|completed|current|present|ongoing)\b",
+            " ",
+            school_text,
+            flags=re.IGNORECASE,
+        )
+
+        school_text = re.sub(r"\|.*$", " ", school_text)
+
+        if re.search(
+            r"\b(?:college|institute|school|academy|campus|polytechnic)\b",
+            school_text,
+            re.IGNORECASE,
+        ):
+            school_text = re.sub(
+                r"\b(?:[A-Za-z][A-Za-z.'&-]*\s+){0,4}(?:university|board)\b",
+                " ",
+                school_text,
+                flags=re.IGNORECASE,
+            )
+
+        # Trim punctuation and leftover parentheses, such as the "(HSC)" label.
+        school = re.sub(r"\s+", " ", school_text).strip(
+            " \t\r\n,;:&|.-()[]"
+        )
+
+        gpa_context = re.sub(
+            rf"(?<![A-Za-z0-9])(?:{date_token})\s*(?:-|–|—|to)\s*"
+            rf"(?:{date_token})(?![A-Za-z0-9])",
+            " ",
+            context,
+            flags=re.IGNORECASE,
+        )
+        gpa_context = re.sub(r"\b(?:19|20)\d{2}\b", " ", gpa_context)
 
         gpa = ""
-        gpa_match = GPA_PATTERN.search(context)
+        gpa_match = GPA_PATTERN.search(gpa_context)
         if gpa_match:
             gpa = gpa_match.group(0).strip()
         else:
-            percentage_match = re.search(r"\b\d{2}(?:\.\d{1,2})?\s*%", context)
+            percentage_match = re.search(
+                r"(?<!\d)\d{2,3}(?:\.\d{1,2})?\s*%", gpa_context
+            )
             if percentage_match:
                 gpa = percentage_match.group(0).strip()
-            elif re.search(r"\bpursuing\b", context, re.IGNORECASE):
+            elif re.search(r"\bpursuing\b", gpa_context, re.IGNORECASE):
                 gpa = "Pursuing"
 
         results.append({
@@ -446,6 +617,66 @@ def extract_education(text: str) -> List[Dict[str, Any]]:
             "year": year,
             "gpa": gpa,
         })
+
+    # For non-tabular education sections, use institution lines in document
+    # order when there is exactly one clear institution line per degree record.
+    # This avoids mixing specializations (e.g. Human Resource) into school names
+    # and supports both institution-before-degree and institution-after-degree CVs.
+    if not re.search(r"\bNAME\s+OF\s+EXAMINATION\b", text, re.IGNORECASE):
+        institution_lines = []
+        institution_marker = (
+            r"\b(?:college|institute|school|academy|campus|polytechnic|university)\b"
+        )
+        for line in edu_text.splitlines():
+            candidate = line.strip()
+            if not candidate or re.search(r"\bboard\b", candidate, re.IGNORECASE):
+                continue
+            # Recognize bare HIGHER SECONDARY institution names such as 'P.S. HIGHER SECONDARY', but don't count qualification headings as schools.
+            if re.search(r"\b(?:higher\s+secondary|secondary)\s+examination\b", candidate, re.IGNORECASE):
+                continue
+            # Recognize bare HIGHER SECONDARY institution names when the line has no 'School' token.
+            if not re.search(institution_marker, candidate, re.IGNORECASE) and not re.search(r"\bhigher\s+secondary\b", candidate, re.IGNORECASE):
+                continue
+
+            candidate = re.sub(r"\|.*$", " ", candidate)
+            candidate = re.sub(
+                r"\([^)]*\b(?:university|board)\b[^)]*\)",
+                " ",
+                candidate,
+                flags=re.IGNORECASE,
+            )
+            candidate = re.sub(r"\s+", " ", candidate).strip(" 	,;:&|.-()[]")
+            if (
+                re.search(institution_marker, candidate, re.IGNORECASE)
+                or re.search(r"\bhigher\s+secondary\b", candidate, re.IGNORECASE)
+            ):
+                institution_lines.append(candidate)
+
+        if len(institution_lines) == len(results) and results:
+            for record, institution in zip(results, institution_lines):
+                record["school"] = institution
+
+    # Normalize parsed institution names after any table/line association.
+    # Keep grade percentages in the grade field, not appended to institution names.
+    for education_record in results:
+        school_name = education_record.get("school")
+        if isinstance(school_name, str):
+            school_name = re.sub(
+                r"\s+(?:scored|with|obtained)\s*:?[ \t]*\d{1,3}(?:\.\d{1,2})?\s*%.*$",
+                "",
+                school_name,
+                flags=re.IGNORECASE,
+            )
+            # Handle list-style entries like 'MBA HR from Dhanraj Baid Jain College'.
+            # Remove the qualification/specialization prefix but preserve the institution.
+            school_name = re.sub(
+                r'^[\s\uf0d8•*+\-]*(?:MBA|B\.?\s*Com|BBA|HSC|SSLC|SSC|Higher\s+Secondary\s+Examination|Secondary\s+Examination)\b.*?\bfrom\s+',
+                "",
+                school_name,
+                flags=re.IGNORECASE,
+            )
+            school_name = re.sub(r"\s+", " ", school_name).strip(" \t,;:&|.-()[]")
+            education_record["school"] = school_name
 
     return results
 

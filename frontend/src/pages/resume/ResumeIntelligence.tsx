@@ -237,10 +237,11 @@ export function ResumeIntelligence() {
       ? parsed.experience
       : [];
 
-    const parsedEducation = Array.isArray(
-      parsed.education
-    )
-      ? parsed.education
+    const parsedEducation = Array.isArray(parsed.education)
+      ? parsed.education.map((education: any) => ({
+          ...education,
+          institution: education.institution || education.school || '',
+        }))
       : [];
 
     const parsedProjects = Array.isArray(
